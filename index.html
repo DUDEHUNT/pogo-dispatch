@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>POGO · Photo Dispatch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#16233F;        /* deep indigo — bars, text */
+  --ink-soft:#3D4C6E;
+  --paper:#F2F4F7;      /* cool workshop paper */
+  --card:#FFFFFF;
+  --line:#DDE3EC;
+  --marigold:#FF8F1F;   /* NEW badge / rate accent */
+  --wa:#0E7E6B;         /* send action — WhatsApp-adjacent green */
+  --wa-press:#0A6355;
+  --danger:#B3372B;
+  --ok:#1E7E46;
+  --r:14px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  font-family:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  background:var(--paper);color:var(--ink);
+  padding-bottom:calc(96px + env(safe-area-inset-bottom));
+}
+button{font-family:inherit}
+:focus-visible{outline:3px solid var(--marigold);outline-offset:2px;border-radius:8px}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+/* ---------- top bar ---------- */
+.bar{
+  background:var(--ink);color:#fff;
+  padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
+  display:flex;align-items:center;gap:10px;
+}
+.bar h1{font-size:17px;font-weight:800;letter-spacing:.02em;margin:0;flex:1;line-height:1.1}
+.bar h1 small{display:block;font-weight:500;font-size:11px;opacity:.75;letter-spacing:.04em}
+.iconbtn{
+  background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;
+  border-radius:10px;padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;
+}
+.iconbtn:active{background:rgba(255,255,255,.25)}
+
+/* ---------- filter rails ---------- */
+.rails{position:sticky;top:0;z-index:25;background:var(--paper);box-shadow:0 1px 0 var(--line)}
+.rail{display:flex;gap:8px;overflow-x:auto;padding:10px 14px 4px;scrollbar-width:none}
+.rail::-webkit-scrollbar{display:none}
+.chip{
+  flex:0 0 auto;border:1.5px solid var(--line);background:var(--card);color:var(--ink);
+  border-radius:999px;padding:9px 14px;font-size:14px;font-weight:700;cursor:pointer;
+  display:flex;align-items:center;gap:7px;
+}
+.chip .n{font-weight:600;font-size:11.5px;color:var(--ink-soft);background:var(--paper);border-radius:999px;padding:2px 7px}
+.chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.chip.on .n{background:rgba(255,255,255,.18);color:#fff}
+.rail2{display:flex;gap:8px;overflow-x:auto;padding:8px 14px 10px;align-items:center;scrollbar-width:none}
+.rail2::-webkit-scrollbar{display:none}
+.seg{display:flex;flex:0 0 auto;border:1.5px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)}
+.seg button{
+  border:0;background:transparent;padding:9px 13px;font-size:13.5px;font-weight:700;color:var(--ink-soft);cursor:pointer;
+}
+.seg button.on{background:var(--ink);color:#fff}
+.seg.warm button.on{background:var(--marigold);color:#231602}
+.hint{padding:0 16px 8px;font-size:12px;color:var(--ink-soft)}
+
+/* ---------- banners ---------- */
+.banner{margin:10px 14px 0;border-radius:var(--r);padding:12px 14px;font-size:13.5px;line-height:1.45;display:none}
+.banner.err{display:block;background:#FBE9E7;border:1px solid #E9C4BE;color:var(--danger)}
+.banner.info{display:block;background:#FFF4E3;border:1px solid #F3DDBA;color:#7A4E09}
+
+/* ---------- grid ---------- */
+#grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 14px}
+@media(min-width:640px){#grid{grid-template-columns:repeat(3,1fr)}}
+@media(min-width:960px){#grid{grid-template-columns:repeat(5,1fr)}}
+.card{
+  background:var(--card);border:1.5px solid var(--line);border-radius:var(--r);
+  overflow:hidden;position:relative;cursor:pointer;
+}
+.card .ph{position:relative;aspect-ratio:3/4;background:#E8ECF2}
+.card img{width:100%;height:100%;object-fit:cover;display:block}
+.card .newpill{
+  position:absolute;top:8px;left:8px;background:var(--marigold);color:#231602;
+  font-size:10.5px;font-weight:800;letter-spacing:.06em;padding:3px 8px;border-radius:999px;
+}
+.card .tick{
+  position:absolute;inset:0;background:rgba(22,35,63,.42);display:none;align-items:center;justify-content:center;
+}
+.card.sel .tick{display:flex}
+.card .tick span{
+  width:46px;height:46px;border-radius:50%;background:#fff;color:var(--ink);
+  display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;
+  box-shadow:0 4px 14px rgba(0,0,0,.25);
+}
+.card .meta{padding:8px 10px 10px}
+.card .nm{font-size:13.5px;font-weight:800;line-height:1.2}
+.card .sz{font-size:11.5px;color:var(--ink-soft);margin-top:3px}
+.card.bad .ph::after{content:"⚠ image failed";position:absolute;inset:auto 0 0 0;background:var(--danger);color:#fff;font-size:11px;text-align:center;padding:3px}
+.empty{padding:60px 24px;text-align:center;color:var(--ink-soft);font-size:14.5px;line-height:1.6}
+.empty b{color:var(--ink)}
+
+/* ---------- job ticket (bottom bar) ---------- */
+.ticket{
+  position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--ink);color:#fff;
+  padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+  display:flex;align-items:center;gap:12px;
+  border-top:3px solid var(--marigold);
+}
+.ticket .stamp{flex:1;min-width:0}
+.ticket .cnt{font-size:19px;font-weight:800;line-height:1.05}
+.ticket .desc{font-size:11px;letter-spacing:.09em;text-transform:uppercase;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.btn{
+  border:0;border-radius:12px;padding:13px 18px;font-size:15px;font-weight:800;cursor:pointer;
+}
+.btn.wa{background:var(--wa);color:#fff}
+.btn.wa:active{background:var(--wa-press)}
+.btn.ghost{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;font-size:13px;padding:12px 14px}
+.btn:disabled{opacity:.45;cursor:default}
+
+/* ---------- overlays ---------- */
+.ovl{position:fixed;inset:0;z-index:60;background:rgba(16,22,38,.6);display:none;align-items:flex-end;justify-content:center}
+.ovl.show{display:flex}
+.sheetbox{
+  background:var(--card);width:100%;max-width:560px;border-radius:18px 18px 0 0;
+  padding:18px 18px calc(18px + env(safe-area-inset-bottom));max-height:82vh;overflow:auto;
+}
+.sheetbox h2{margin:0 0 4px;font-size:17px;font-weight:800}
+.sheetbox .sub{font-size:12.5px;color:var(--ink-soft);margin-bottom:14px}
+.pbar{height:10px;background:var(--paper);border-radius:999px;overflow:hidden;border:1px solid var(--line)}
+.pbar i{display:block;height:100%;width:0%;background:var(--wa)}
+.pnum{display:flex;justify-content:space-between;font-size:13px;font-weight:700;margin-top:8px}
+.batchbtn{
+  width:100%;margin-top:10px;border:1.5px solid var(--line);background:var(--paper);
+  border-radius:12px;padding:14px;font-size:15px;font-weight:800;color:var(--ink);cursor:pointer;
+  display:flex;justify-content:space-between;align-items:center;
+}
+.batchbtn.done{border-color:var(--ok);color:var(--ok);background:#EAF6EE}
+.rowline{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.rowline b{font-weight:800}
+.small{font-size:12px;color:var(--ink-soft);line-height:1.5;margin-top:10px}
+.closex{float:right;border:0;background:var(--paper);border-radius:10px;padding:6px 12px;font-weight:800;cursor:pointer}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <h1>POGO · Photo Dispatch<small>sheet-driven · footer rates · WhatsApp</small></h1>
+  <button class="iconbtn" id="btnData">Data</button>
+  <button class="iconbtn" id="btnReload">Reload</button>
+</header>
+
+<div class="rails">
+  <div class="rail" id="catRail"></div>
+  <div class="rail2">
+    <div class="seg" id="tierSeg">
+      <button data-t="R1">R1</button><button data-t="R2">R2</button><button data-t="R3">R3</button><button data-t="M" class="on">Manual</button>
+    </div>
+    <div class="seg" id="sizeSeg">
+      <button data-s="small">Small</button><button data-s="all" class="on">All</button><button data-s="large">Large</button>
+    </div>
+    <div class="seg warm" id="rateSeg">
+      <button data-r="rate" class="on">Rate footer</button><button data-r="orig">Originals</button>
+    </div>
+  </div>
+  <div class="hint" id="hint">Pick categories to start · R1 all new · R2 30 new + 10 old · R3 20 new + 20 old (per category)</div>
+</div>
+
+<div class="banner" id="banner"></div>
+<main id="grid"><div class="empty">Loading catalog sheet…</div></main>
+
+<div class="ticket">
+  <div class="stamp">
+    <div class="cnt" id="tCount">0 photos</div>
+    <div class="desc" id="tDesc">no pack yet</div>
+  </div>
+  <button class="btn ghost" id="btnZip" disabled>ZIP</button>
+  <button class="btn wa" id="btnSend" disabled>Send</button>
+</div>
+
+<!-- progress -->
+<div class="ovl" id="ovlProg"><div class="sheetbox">
+  <h2 id="pTitle">Preparing photos…</h2>
+  <div class="sub" id="pSub">Composing rate footers on each photo</div>
+  <div class="pbar"><i id="pFill"></i></div>
+  <div class="pnum"><span id="pPct">0%</span><span id="pOf">0 / 0</span></div>
+  <button class="batchbtn" id="pCancel" style="margin-top:16px">Cancel</button>
+</div></div>
+
+<!-- batches -->
+<div class="ovl" id="ovlBatch"><div class="sheetbox">
+  <button class="closex" data-close="ovlBatch">Close</button>
+  <h2>Pack ready</h2>
+  <div class="sub" id="bSub"></div>
+  <div id="bList"></div>
+  <button class="batchbtn" id="bZip">Download everything as ZIP</button>
+  <div class="small" id="bNote"></div>
+</div></div>
+
+<!-- data drawer -->
+<div class="ovl" id="ovlData"><div class="sheetbox">
+  <button class="closex" data-close="ovlData">Close</button>
+  <h2>Sheet data check</h2>
+  <div class="sub" id="dWhen"></div>
+  <div id="dBody"></div>
+  <div class="small">To change the source: open this page with <b>?id=SHEET_ID&amp;tab=TabName</b> in the address bar. The sheet must be shared as “Anyone with the link → Viewer”.</div>
+</div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+"use strict";
+/* ================= CONFIG ================= */
+const qs = new URLSearchParams(location.search);
+const SHEET_ID = qs.get("id") || "1Wbsx_bOeEAMk0eKp6H5wZYGY0xVOsT6dKg4dpvjHUxI";
+const SHEET_TAB = qs.get("tab") || "Sheet1";
+const CATS = [
+  ["WC","Waistcoat"],["BL","Blazers"],["PW","Party Wear"],["JK","Jackets"],
+  ["SW","Summer Wear"],["2P","2 Piece"],["2S","2 Pc Suspenders"],["RW","Rate Wise"]
+];
+const SMALL_SET = ["0-3","0-4","0-5","1-5","1-4","1-3"];
+const LARGE_SET = ["3-8","4-8","5-8","1-8","0-8","1-10","0-10","6-10"];
+const DEFAULT_SIZES = ["0-3","0-8","4-8"];
+const TIER_RULE = { R1:{n:Infinity,o:0}, R2:{n:30,o:10}, R3:{n:20,o:20} };
+const MAX_EDGE = 2048, JPG_Q = 0.92, WA_BATCH = 30;
+
+/* ================= STATE ================= */
+let rows = [];            // parsed designs
+let skipped = [];         // rows dropped + reason
+let rateRanges = [];      // ranges that have a rate column
+let loadedAt = null;
+let selCats = new Set();
+let tier = "M";           // R1 R2 R3 M(anual) C(ustom)
+let sizeMode = "all";     // small | all | large
+let rateMode = "rate";    // rate | orig
+let selected = new Set(); // row keys
+const blobCache = new Map();
+let cancelFlag = false;
+
+/* ================= HELPERS ================= */
+const $ = id => document.getElementById(id);
+const normDash = s => (s||"").toString().replace(/[\u2012\u2013\u2014\u2212]/g,"-");
+const norm = s => normDash(s).trim();
+const low = s => norm(s).toLowerCase();
+function parseCSV(t){
+  const out=[]; let row=[],cur="",q=false;
+  for(let i=0;i<t.length;i++){const c=t[i];
+    if(q){ if(c==='"'){ if(t[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; }
+    else if(c==='"') q=true;
+    else if(c===","){row.push(cur);cur="";}
+    else if(c==="\n"){row.push(cur);out.push(row);row=[];cur="";}
+    else if(c!=="\r") cur+=c;
+  }
+  if(cur!==""||row.length){row.push(cur);out.push(row);}
+  return out;
+}
+const rangeRe = /^(\d+)\s*-\s*(\d+)$/;
+function cleanRange(s){ const m=norm(s).match(rangeRe); return m?`${+m[1]}-${+m[2]}`:null; }
+function money(v){ v=norm(v).replace(/^(rs\.?|₹|inr)\s*/i,""); return v; }
+
+/* ================= SHEET LOAD ================= */
+async function loadSheet(){
+  $("grid").innerHTML = '<div class="empty">Loading catalog sheet…</div>';
+  banner("");
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(SHEET_TAB)}`;
+  let text;
+  try{
+    const r = await fetch(url,{cache:"no-store"});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    text = await r.text();
+  }catch(e){
+    $("grid").innerHTML = '<div class="empty"><b>Couldn’t read the sheet.</b><br>In Google Sheets: Share → Anyone with the link → Viewer, then tap Reload.<br><br>If you’re viewing this inside a sandboxed preview, the network may be blocked — open the deployed (Netlify) copy instead.</div>';
+    banner("Sheet not reachable. Check sharing, then Reload.","err");
+    return;
+  }
+  parseRows(parseCSV(text));
+  loadedAt = new Date();
+  buildCatRail(); render();
+}
+function parseRows(table){
+  rows=[]; skipped=[]; rateRanges=[];
+  if(!table.length) return;
+  const H = table[0].map(low);
+  const col = re => H.findIndex(h=>re.test(h));
+  const cID   = col(/photo\s*id|^id$/);
+  const cCat  = col(/^categor/);
+  const cLab  = col(/^label/);
+  const cURL  = col(/link|url/);
+  const cName = col(/photo\s*name|design\s*name|article/);
+  const cCol  = col(/^colou?r/);
+  const cSz   = col(/^sizes?$/);
+  const rateCols = {};
+  H.forEach((h,i)=>{
+    const m = h.match(/(\d+)\s*-\s*(\d+)/);
+    if(m && (/rate/.test(h) || rangeRe.test(norm(h)))){
+      const r = `${+m[1]}-${+m[2]}`;
+      rateCols[r]=i; if(!rateRanges.includes(r)) rateRanges.push(r);
+    }
+  });
+  for(let i=1;i<table.length;i++){
+    const R = table[i]; if(!R || !R.join("").trim()) continue;
+    const url = norm(R[cURL]||"");
+    const cat = norm(R[cCat]||"").toUpperCase();
+    const label = norm(R[cLab]||"").toUpperCase();
+    const id = norm(R[cID]||"") || ("row"+i);
+    if(!/^https?:\/\//.test(url)){ skipped.push([id,"no photo URL"]); continue; }
+    if(!cat){ skipped.push([id,"no category"]); continue; }
+    if(label==="OOS"){ skipped.push([id,"label OOS"]); continue; }
+    const name = norm(R[cName]||"");
+    const dm = name.match(/\d{3,5}/);
+    const designNo = dm ? dm[0] : id;
+    let colorTxt = dm ? name.replace(dm[0],"").trim() : (norm(R[cCol]||""));
+    if(!colorTxt) colorTxt = norm(R[cCol]||"");
+    let sizes = (norm(R[cSz]||"")).split(/[,;]+/).map(cleanRange).filter(Boolean);
+    if(!sizes.length) sizes = DEFAULT_SIZES.slice();
+    const rates = {};
+    for(const [rg,ci] of Object.entries(rateCols)){
+      const v = money(R[ci]||"");
+      if(v!=="") rates[rg]=v;
+    }
+    rows.push({key:"k"+i, idx:i, id, cat, isNew:label==="NEW", url, name:name||id, designNo, colorTxt, sizes, rates, failed:false});
+  }
+}
+
+/* ================= FILTER LOGIC ================= */
+const sizeSet = m => m==="small"?SMALL_SET : m==="large"?LARGE_SET : null;
+function sizeOK(d){ const S=sizeSet(sizeMode); return !S || d.sizes.some(s=>S.includes(s)); }
+function ratePairs(d){
+  const S=sizeSet(sizeMode);
+  const rgs = S ? d.sizes.filter(s=>S.includes(s)) : d.sizes;
+  return rgs.filter(r=>d.rates[r]!=null).map(r=>[r,d.rates[r]]);
+}
+function pool(){ return rows.filter(d=>selCats.has(d.cat) && sizeOK(d)); }
+function applyTier(){
+  selected = new Set();
+  if(tier==="M"||tier==="C"){ return; }
+  const rule = TIER_RULE[tier];
+  for(const c of selCats){
+    const P = pool().filter(d=>d.cat===c);           // size filter BEFORE tier counts
+    P.filter(d=>d.isNew).slice(0, rule.n===Infinity?P.length:rule.n).forEach(d=>selected.add(d.key));
+    P.filter(d=>!d.isNew).slice(0, rule.o).forEach(d=>selected.add(d.key));
+  }
+}
+
+/* ================= RENDER ================= */
+function banner(msg,cls){ const b=$("banner"); b.className="banner"+(msg?" "+cls:""); b.innerHTML=msg||""; }
+function buildCatRail(){
+  const counts={}; rows.forEach(d=>counts[d.cat]=(counts[d.cat]||0)+1);
+  const known = CATS.map(c=>c[0]);
+  const extras = [...new Set(rows.map(d=>d.cat))].filter(c=>!known.includes(c)).map(c=>[c,c]);
+  $("catRail").innerHTML = CATS.concat(extras).map(([c,label])=>
+    `<button class="chip${selCats.has(c)?" on":""}" data-c="${c}">${c}<span class="n">${counts[c]||0}</span></button>`
+  ).join("");
+}
+function render(){
+  document.querySelectorAll("#catRail .chip").forEach(ch=>ch.classList.toggle("on",selCats.has(ch.dataset.c)));
+  const P = pool();
+  const g = $("grid");
+  if(!selCats.size){ g.innerHTML='<div class="empty"><b>Pick a product category above to start.</b><br>Then choose a customer tier and size, and Send.</div>'; }
+  else if(!P.length){ g.innerHTML='<div class="empty">No designs match this size filter in the selected categories.</div>'; }
+  else{
+    g.innerHTML = P.map(d=>{
+      const thumb = d.url.includes("res.cloudinary.com") ? d.url.replace("/upload/","/upload/w_420,q_auto,f_auto/") : d.url;
+      return `<div class="card${selected.has(d.key)?" sel":""}" data-k="${d.key}">
+        <div class="ph">${d.isNew?'<span class="newpill">NEW</span>':""}
+          <img loading="lazy" src="${thumb}" alt="${d.name}" onerror="this.closest('.card').classList.add('bad')">
+          <div class="tick"><span>✓</span></div></div>
+        <div class="meta"><div class="nm">${d.designNo}${d.colorTxt?" · "+d.colorTxt:""}</div>
+        <div class="sz">${d.sizes.join("  ")}</div></div></div>`;
+    }).join("");
+  }
+  const n = [...selected].filter(k=>P.some(d=>d.key===k)).length;
+  $("tCount").textContent = n+" photo"+(n===1?"":"s");
+  const tierName = tier==="M"?"Manual":tier==="C"?"Custom":tier;
+  $("tDesc").textContent = selCats.size
+    ? `${tierName} · ${[...selCats].join("+")} · ${sizeMode.toUpperCase()} · ${rateMode==="rate"?"RATE FOOTER":"ORIGINALS"}`
+    : "no pack yet";
+  $("btnSend").disabled = $("btnZip").disabled = n===0;
+}
+
+/* ================= COMPOSITING ================= */
+function loadImg(url){
+  return new Promise((res,rej)=>{
+    const im = new Image(); im.crossOrigin="anonymous";
+    im.onload=()=>res(im); im.onerror=()=>rej(new Error("img"));
+    im.src=url;
+  });
+}
+async function makeBlob(d){
+  const ck = d.key+"|"+rateMode+"|"+sizeMode;
+  if(blobCache.has(ck)) return blobCache.get(ck);
+  let blob;
+  if(rateMode==="orig"){
+    const r = await fetch(d.url); if(!r.ok) throw new Error("fetch");
+    blob = await r.blob();
+  }else{
+    const im = await loadImg(d.url);
+    let W=im.naturalWidth, H=im.naturalHeight;
+    const sc = Math.min(1, MAX_EDGE/Math.max(W,H)); W=Math.round(W*sc); H=Math.round(H*sc);
+    const u = W/1000;
+    const pairs = ratePairs(d);
+    const f1=Math.round(38*u), f2=Math.round(28*u), f3=Math.round(34*u);
+    const pad=Math.round(22*u), gap=Math.round(10*u);
+    const fh = pad*2 + f1 + gap + f2 + (pairs.length? gap+f3 : 0);
+    const cv=document.createElement("canvas"); cv.width=W; cv.height=H;
+    const cx=cv.getContext("2d");
+    cx.drawImage(im,0,0,W,H);
+    cx.fillStyle="rgba(13,19,34,0.66)"; cx.fillRect(0,H-fh,W,fh);
+    cx.fillStyle="#FF8F1F"; cx.fillRect(0,H-fh,W,Math.max(2,Math.round(4*u)));
+    const fit=(txt,px,weight)=>{ let s=px;
+      do{ cx.font=`${weight} ${s}px "Bricolage Grotesque",Arial,sans-serif`;
+          if(cx.measureText(txt).width<=W-pad*2) break; s-=Math.max(1,Math.round(u)); }while(s>10*u);
+      return s; };
+    let y=H-fh+pad;
+    cx.textBaseline="top"; cx.fillStyle="#FFFFFF";
+    const l1=`D.No ${d.designNo}${d.colorTxt?"  ·  "+d.colorTxt:""}`;
+    fit(l1,f1,700); cx.fillText(l1,pad,y); 
+    if(d.isNew){
+      cx.font=`800 ${Math.round(20*u)}px "Bricolage Grotesque",Arial`;
+      const tw=cx.measureText("NEW").width, bw=tw+Math.round(24*u), bh=Math.round(34*u);
+      const bx=W-pad-bw, by=y;
+      cx.fillStyle="#FF8F1F";
+      if(cx.roundRect){ cx.beginPath(); cx.roundRect(bx,by,bw,bh,bh/2); cx.fill(); }
+      else cx.fillRect(bx,by,bw,bh);
+      cx.fillStyle="#231602"; cx.fillText("NEW",bx+Math.round(12*u),by+Math.round(7*u));
+      cx.fillStyle="#FFFFFF";
+    }
+    y+=f1+gap;
+    const l2=`Sizes  ${d.sizes.join("   ")}`;
+    cx.globalAlpha=.92; fit(l2,f2,500); cx.fillText(l2,pad,y); cx.globalAlpha=1;
+    if(pairs.length){
+      y+=f2+gap;
+      const l3=pairs.map(([r,v])=>`${r}  ₹${v}`).join("    ·    ");
+      cx.fillStyle="#FFC24B"; fit(l3,f3,800); cx.fillText(l3,pad,y);
+    }
+    blob = await new Promise(res=>cv.toBlob(res,"image/jpeg",JPG_Q));
+    if(!blob) throw new Error("encode");
+  }
+  blobCache.set(ck,blob);
+  return blob;
+}
+function fname(d){
+  const c=(d.colorTxt||"").replace(/[^A-Za-z0-9]+/g,"");
+  return `${d.cat}-${d.designNo}${c?"-"+c:""}.jpg`;
+}
+
+/* ================= GENERATE + SHARE ================= */
+let packFiles=[], failedList=[];
+async function generate(){
+  const P=pool().filter(d=>selected.has(d.key));
+  if(!P.length) return null;
+  cancelFlag=false; packFiles=[]; failedList=[];
+  try{ await document.fonts.ready; }catch(e){}
+  $("ovlProg").classList.add("show");
+  $("pTitle").textContent = rateMode==="rate"?"Composing rate footers…":"Fetching original photos…";
+  $("pSub").textContent = `${P.length} photos · ${sizeMode.toUpperCase()} rates`;
+  let done=0; const upd=()=>{ const pc=Math.round(done/P.length*100);
+    $("pFill").style.width=pc+"%"; $("pPct").textContent=pc+"%"; $("pOf").textContent=`${done} / ${P.length}`; };
+  upd();
+  const CONC=4; let i=0;
+  async function worker(){
+    while(i<P.length && !cancelFlag){
+      const d=P[i++];
+      try{ const b=await makeBlob(d); packFiles.push(new File([b],fname(d),{type:b.type||"image/jpeg"})); }
+      catch(e){ failedList.push(d); }
+      done++; upd();
+    }
+  }
+  await Promise.all(Array.from({length:CONC},worker));
+  $("ovlProg").classList.remove("show");
+  if(cancelFlag) return null;
+  return packFiles;
+}
+function showBatches(){
+  const total=packFiles.length;
+  const nb=Math.ceil(total/WA_BATCH);
+  $("bSub").textContent = `${total} photos · ${nb} WhatsApp batch${nb>1?"es":""} (max ${WA_BATCH} per send)`;
+  const canShare = navigator.canShare && packFiles.length && navigator.canShare({files:[packFiles[0]]});
+  let html="";
+  for(let b=0;b<nb;b++){
+    const n=Math.min(WA_BATCH,total-b*WA_BATCH);
+    html+=`<button class="batchbtn share" data-b="${b}" ${canShare?"":"disabled"}>
+      <span>Send batch ${b+1} of ${nb} to WhatsApp</span><span>${n} 📷</span></button>`;
+  }
+  $("bList").innerHTML=html;
+  $("bNote").innerHTML =
+    (canShare?"":"<b>Direct share isn’t available in this browser</b> — use the ZIP, extract with the Files app, select all, send. ")
+    + (failedList.length? `<span style="color:var(--danger)">Skipped ${failedList.length} (image failed to load): ${failedList.map(d=>d.designNo).join(", ")}.</span>`:"" );
+  $("ovlBatch").classList.add("show");
+}
+async function shareBatch(b,btn){
+  const chunk=packFiles.slice(b*WA_BATCH,(b+1)*WA_BATCH);
+  try{
+    await navigator.share({files:chunk, title:"POGO catalog"});
+    btn.classList.add("done"); btn.firstElementChild.textContent=`✓ Batch ${b+1} sent`;
+  }catch(e){ /* user closed share sheet — leave button active */ }
+}
+async function makeZip(){
+  const zip=new JSZip();
+  const P=pool().filter(d=>selected.has(d.key));
+  const byName=Object.fromEntries(P.map(d=>[fname(d),d]));
+  packFiles.forEach(f=>{
+    const d=byName[f.name];
+    zip.folder(d?d.cat:"MISC").file(f.name,f);
+  });
+  const blob=await zip.generateAsync({type:"blob"});
+  const a=document.createElement("a");
+  const dt=new Date().toISOString().slice(0,10);
+  a.href=URL.createObjectURL(blob);
+  a.download=`POGO-${tier==="M"||tier==="C"?"PACK":tier}-${sizeMode.toUpperCase()}-${dt}.zip`;
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+
+/* ================= DATA DRAWER ================= */
+function openData(){
+  $("dWhen").textContent = loadedAt? `Loaded ${loadedAt.toLocaleTimeString()} · tab “${SHEET_TAB}”` : "Sheet not loaded";
+  const perCat={};
+  rows.forEach(d=>{ const p=perCat[d.cat]=perCat[d.cat]||{n:0,o:0}; d.isNew?p.n++:p.o++; });
+  let html=`<div class="rowline"><span>Designs loaded</span><b>${rows.length}</b></div>
+    <div class="rowline"><span>Rate columns found</span><b>${rateRanges.length? rateRanges.join(", "):"none yet"}</b></div>`;
+  Object.keys(perCat).sort().forEach(c=>{
+    html+=`<div class="rowline"><span>${c}</span><b>${perCat[c].n} new · ${perCat[c].o} old</b></div>`;
+  });
+  const noRate=rows.filter(d=>!Object.keys(d.rates).length).length;
+  html+=`<div class="rowline"><span>Designs with no rate filled</span><b>${noRate}</b></div>`;
+  if(skipped.length){
+    html+=`<div class="rowline"><span>Rows skipped</span><b>${skipped.length}</b></div>
+      <div class="small">${skipped.slice(0,12).map(s=>s[0]+" — "+s[1]).join("<br>")}${skipped.length>12?"<br>…":""}</div>`;
+  }
+  $("dBody").innerHTML=html;
+  $("ovlData").classList.add("show");
+}
+
+/* ================= EVENTS ================= */
+$("catRail").addEventListener("click",e=>{
+  const ch=e.target.closest(".chip"); if(!ch) return;
+  const c=ch.dataset.c;
+  selCats.has(c)?selCats.delete(c):selCats.add(c);
+  if(tier!=="M"&&tier!=="C") applyTier();
+  render();
+});
+$("tierSeg").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  tier=b.dataset.t;
+  [...$("tierSeg").children].forEach(x=>x.classList.toggle("on",x===b));
+  if(tier==="M") selected=new Set(); else applyTier();
+  render();
+});
+$("sizeSeg").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  sizeMode=b.dataset.s;
+  [...$("sizeSeg").children].forEach(x=>x.classList.toggle("on",x===b));
+  if(tier!=="M"&&tier!=="C") applyTier();
+  else selected=new Set([...selected].filter(k=>pool().some(d=>d.key===k)));
+  render();
+});
+$("rateSeg").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  rateMode=b.dataset.r;
+  [...$("rateSeg").children].forEach(x=>x.classList.toggle("on",x===b));
+  render();
+});
+$("grid").addEventListener("click",e=>{
+  const c=e.target.closest(".card"); if(!c) return;
+  const k=c.dataset.k;
+  selected.has(k)?selected.delete(k):selected.add(k);
+  if(tier!=="M"){ tier="C"; [...$("tierSeg").children].forEach(x=>x.classList.remove("on")); }
+  render();
+});
+$("btnSend").addEventListener("click",async()=>{ if(await generate()) showBatches(); });
+$("btnZip").addEventListener("click",async()=>{ if(await generate()){ await makeZip(); showBatches(); } });
+$("bZip").addEventListener("click",makeZip);
+$("bList").addEventListener("click",e=>{
+  const b=e.target.closest(".share"); if(b) shareBatch(+b.dataset.b,b);
+});
+$("pCancel").addEventListener("click",()=>{cancelFlag=true;});
+$("btnReload").addEventListener("click",()=>{ blobCache.clear(); loadSheet(); });
+$("btnData").addEventListener("click",openData);
+document.querySelectorAll("[data-close]").forEach(x=>x.addEventListener("click",()=>$(x.dataset.close).classList.remove("show")));
+
+loadSheet();
+</script>
+</body>
+</html>
