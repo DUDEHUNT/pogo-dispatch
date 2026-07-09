@@ -138,6 +138,7 @@ button{font-family:inherit}
   border-radius:12px;padding:14px;font-size:15px;font-weight:800;color:var(--ink);cursor:pointer;
   display:flex;justify-content:space-between;align-items:center;
 }
+.batchbtn:disabled{opacity:.5;cursor:default}
 .batchbtn.done{border-color:var(--ok);color:var(--ok);background:#EAF6EE}
 .rowline{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px}
 .rowline b{font-weight:800}
@@ -148,7 +149,7 @@ button{font-family:inherit}
 <body>
 
 <header class="bar">
-  <h1>POGO · Photo Dispatch<small>sheet-driven · footer rates · WhatsApp · v1.4</small></h1>
+  <h1>POGO · Photo Dispatch<small>sheet-driven · footer rates · WhatsApp · v1.5</small></h1>
   <button class="iconbtn" id="btnData">Data</button>
   <button class="iconbtn" id="btnReload">Reload</button>
 </header>
@@ -467,6 +468,7 @@ async function generate(){
 }
 function catLabel(code){ const f=CATS.find(c=>c[0]===code); return f?f[1]:code; }
 function detectShareCap(){
+  if(window.AndroidBridge) return WA_BATCH; /* native intent — only WhatsApp's own 30 cap applies */
   try{
     const f=packItems[0]&&packItems[0].file;
     if(!(f && navigator.share && navigator.canShare && navigator.canShare({files:[f]}))) return 0;
@@ -502,7 +504,8 @@ function showBatches(){
     `<button class="batchbtn share" data-i="${i}">
       <span>${cap>0?"Send":"Download"} ${g.label}</span><span>${g.files.length} 📷</span></button>`).join("");
   $("bNote").innerHTML =
-    (cap>0
+    (window.AndroidBridge? "Running inside the POGO app — full 30-photo WhatsApp sends. ":"")
+    + (cap>0
       ? (cap<WA_BATCH? `The browser allows ${cap} photos per direct share (WhatsApp itself takes 30). For the full pack in one go: “Save all photos to phone”, then in WhatsApp attach → Gallery → select up to 30 at once. `:"")
       : "<b>This browser can’t hand photos straight to WhatsApp.</b> Open this page in Chrome for one-tap sending — for now each button saves that category as a ZIP. ")
     + (failedList.length? `<span style="color:var(--danger)">Skipped ${failedList.length} (image failed to load): ${failedList.map(d=>d.designNo).join(", ")}.</span> `:"" )
@@ -511,6 +514,29 @@ function showBatches(){
 }
 async function shareBatch(i,btn){
   const g=batchGroups[i]; if(!g) return;
+  if(window.AndroidBridge){
+    try{
+      btn.disabled=true;
+      AndroidBridge.startPack();
+      for(let n=0;n<g.files.length;n++){
+        const f=g.files[n];
+        btn.firstElementChild.textContent=`Passing ${n+1}/${g.files.length} to WhatsApp…`;
+        const b64=await new Promise((res,rej)=>{
+          const r=new FileReader();
+          r.onload=()=>res(r.result.split(",")[1]);
+          r.onerror=()=>rej(new Error("read failed"));
+          r.readAsDataURL(f);
+        });
+        if(!AndroidBridge.addImage(f.name,b64)) throw new Error("could not save "+f.name);
+      }
+      AndroidBridge.sharePack(g.label);
+      btn.classList.add("done"); btn.firstElementChild.textContent=`✓ ${g.label} sent`;
+    }catch(e){
+      btn.firstElementChild.textContent=`Send ${g.label}`;
+      $("bNote").innerHTML = `<span style="color:var(--danger)">In-app send failed (${(e&&e.message)||"error"}).</span> ` + $("bNote").innerHTML;
+    }finally{ btn.disabled=false; }
+    return;
+  }
   let canS=false;
   try{ canS = !!(navigator.share && navigator.canShare && navigator.canShare({files:g.files})); }catch(e){}
   if(canS){
