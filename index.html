@@ -148,7 +148,7 @@ button{font-family:inherit}
 <body>
 
 <header class="bar">
-  <h1>POGO · Photo Dispatch<small>sheet-driven · footer rates · WhatsApp</small></h1>
+  <h1>POGO · Photo Dispatch<small>sheet-driven · footer rates · WhatsApp · v1.4</small></h1>
   <button class="iconbtn" id="btnData">Data</button>
   <button class="iconbtn" id="btnReload">Reload</button>
 </header>
@@ -157,7 +157,7 @@ button{font-family:inherit}
   <div class="rail" id="catRail"></div>
   <div class="rail2">
     <div class="seg" id="tierSeg">
-      <button data-t="R1">R1</button><button data-t="R2">R2</button><button data-t="R3">R3</button><button data-t="M" class="on">Manual</button>
+      <button data-t="R0">R0</button><button data-t="R1">R1</button><button data-t="R2">R2</button><button data-t="R3">R3</button><button data-t="M" class="on">Manual</button>
     </div>
     <div class="seg" id="sizeSeg">
       <button data-s="small">Small</button><button data-s="all" class="on">All</button><button data-s="large">Large</button>
@@ -166,7 +166,7 @@ button{font-family:inherit}
       <button data-r="rate" class="on">Rate footer</button><button data-r="orig">Originals</button>
     </div>
   </div>
-  <div class="hint" id="hint">Pick categories to start · R1 all new · R2 30 new + 10 old · R3 20 new + 20 old (per category)</div>
+  <div class="hint" id="hint">Pick categories to start · R0 all · R1 all new · R2 30 new + 10 old · R3 20 new + 20 old (per category)</div>
 </div>
 
 <div class="banner" id="banner"></div>
@@ -196,6 +196,7 @@ button{font-family:inherit}
   <h2>Pack ready</h2>
   <div class="sub" id="bSub"></div>
   <div id="bList"></div>
+  <button class="batchbtn" id="bSave">Save all photos to phone</button>
   <button class="batchbtn" id="bZip">Download everything as ZIP</button>
   <div class="small" id="bNote"></div>
 </div></div>
@@ -223,8 +224,8 @@ const CATS = [
 const SMALL_SET = ["0-3","0-4","0-5","1-5","1-4","1-3"];
 const LARGE_SET = ["3-8","4-8","5-8","1-8","0-8","1-10","0-10","6-10"];
 const DEFAULT_SIZES = ["0-3","0-8","4-8"];
-const TIER_RULE = { R1:{n:Infinity,o:0}, R2:{n:30,o:10}, R3:{n:20,o:20} };
-const MAX_EDGE = 2048, JPG_Q = 0.92, WA_BATCH = 30;
+const TIER_RULE = { R0:{n:Infinity,o:Infinity}, R1:{n:Infinity,o:0}, R2:{n:30,o:10}, R3:{n:20,o:20} };
+const MAX_EDGE = 2048, JPG_Q = 0.92, WA_BATCH = 30, SHARE_MAX = 10; /* Chromium rejects >10 files or >50MB per share */
 
 /* ================= STATE ================= */
 let rows = [];            // parsed designs
@@ -417,16 +418,6 @@ async function makeBlob(d){
     cx.textBaseline="top"; cx.fillStyle="#FFFFFF";
     const l1=`D.No ${d.designNo}${d.colorTxt?"  ·  "+d.colorTxt:""}`;
     fit(l1,f1,700); cx.fillText(l1,pad,y); 
-    if(d.isNew){
-      cx.font=`800 ${Math.round(20*u)}px "Bricolage Grotesque",Arial`;
-      const tw=cx.measureText("NEW").width, bw=tw+Math.round(24*u), bh=Math.round(34*u);
-      const bx=W-pad-bw, by=y;
-      cx.fillStyle="#FF8F1F";
-      if(cx.roundRect){ cx.beginPath(); cx.roundRect(bx,by,bw,bh,bh/2); cx.fill(); }
-      else cx.fillRect(bx,by,bw,bh);
-      cx.fillStyle="#231602"; cx.fillText("NEW",bx+Math.round(12*u),by+Math.round(7*u));
-      cx.fillStyle="#FFFFFF";
-    }
     y+=f1+gap;
     const l2=`Sizes  ${d.sizes.join("   ")}`;
     cx.globalAlpha=.92; fit(l2,f2,500); cx.fillText(l2,pad,y); cx.globalAlpha=1;
@@ -475,7 +466,14 @@ async function generate(){
   return packItems;
 }
 function catLabel(code){ const f=CATS.find(c=>c[0]===code); return f?f[1]:code; }
-function buildGroups(){
+function detectShareCap(){
+  try{
+    const f=packItems[0]&&packItems[0].file;
+    if(!(f && navigator.share && navigator.canShare && navigator.canShare({files:[f]}))) return 0;
+  }catch(e){ return 0; }
+  return SHARE_MAX; /* count limit is enforced at share() time, not in canShare */
+}
+function buildGroups(cap){
   batchGroups=[];
   const cats=[...new Set(packItems.map(i=>i.cat))].sort((a,b)=>{
     const ia=CATS.findIndex(c=>c[0]===a), ib=CATS.findIndex(c=>c[0]===b);
@@ -483,65 +481,68 @@ function buildGroups(){
   });
   for(const c of cats){
     const files=packItems.filter(i=>i.cat===c).map(i=>i.file);
-    const parts=Math.ceil(files.length/WA_BATCH);
+    const per = cap>0 ? cap : files.length;   /* ZIP mode: one button per category */
+    const parts=Math.ceil(files.length/per);
     for(let p=0;p<parts;p++){
       batchGroups.push({
         label: catLabel(c)+(parts>1?` ${p+1} of ${parts}`:""),
-        files: files.slice(p*WA_BATCH,(p+1)*WA_BATCH)
+        files: files.slice(p*per,(p+1)*per)
       });
     }
   }
 }
-function canShareFiles(){
-  try{
-    const f=packItems[0]&&packItems[0].file;
-    return !!(f && navigator.share && navigator.canShare && navigator.canShare({files:[f]}));
-  }catch(e){ return false; }
-}
 function showBatches(){
-  buildGroups();
-  const total=packItems.length, sharable=canShareFiles();
-  $("bSub").textContent = `${total} photos · ${batchGroups.length} send${batchGroups.length>1?"s":""} · max ${WA_BATCH} per WhatsApp send`;
+  const cap=detectShareCap();
+  buildGroups(cap);
+  const total=packItems.length;
+  $("bSub").textContent = cap>0
+    ? `${total} photos · ${batchGroups.length} send${batchGroups.length>1?"s":""} · ${cap} photos per share on this phone`
+    : `${total} photos · ZIP per category`;
   $("bList").innerHTML = batchGroups.map((g,i)=>
     `<button class="batchbtn share" data-i="${i}">
-      <span>${sharable?"Send":"Download"} ${g.label}</span><span>${g.files.length} 📷</span></button>`).join("");
+      <span>${cap>0?"Send":"Download"} ${g.label}</span><span>${g.files.length} 📷</span></button>`).join("");
   $("bNote").innerHTML =
-    (sharable?"":"<b>This browser can’t hand photos straight to WhatsApp.</b> Open this page in Chrome for one-tap sending — for now each button saves that category as a ZIP. ")
-    + (failedList.length? `<span style="color:var(--danger)">Skipped ${failedList.length} (image failed to load): ${failedList.map(d=>d.designNo).join(", ")}.</span>`:"" );
+    (cap>0
+      ? (cap<WA_BATCH? `The browser allows ${cap} photos per direct share (WhatsApp itself takes 30). For the full pack in one go: “Save all photos to phone”, then in WhatsApp attach → Gallery → select up to 30 at once. `:"")
+      : "<b>This browser can’t hand photos straight to WhatsApp.</b> Open this page in Chrome for one-tap sending — for now each button saves that category as a ZIP. ")
+    + (failedList.length? `<span style="color:var(--danger)">Skipped ${failedList.length} (image failed to load): ${failedList.map(d=>d.designNo).join(", ")}.</span> `:"" )
+    + `ZIPs keep fixed names and folders (e.g. “Waistcoat - ${SIZE_LABEL[sizeMode]}”), so extracting with “Replace” refreshes old photos instead of doubling them. Delete the ZIP after extracting.`;
   $("ovlBatch").classList.add("show");
 }
 async function shareBatch(i,btn){
   const g=batchGroups[i]; if(!g) return;
-  if(canShareFiles()){
+  let canS=false;
+  try{ canS = !!(navigator.share && navigator.canShare && navigator.canShare({files:g.files})); }catch(e){}
+  if(canS){
     try{
-      await navigator.share({files:g.files, title:"POGO · "+g.label});
+      await navigator.share({files:g.files});
       btn.classList.add("done"); btn.firstElementChild.textContent=`✓ ${g.label} sent`;
       return;
     }catch(e){
       if(e && e.name==="AbortError") return; /* user closed the share sheet */
+      $("bNote").innerHTML = `<span style="color:var(--danger)">Share failed (${(e&&e.name)||"error"}) — saved as ZIP instead.</span> ` + $("bNote").innerHTML;
     }
   }
-  await zipFiles(g.files, g.label.replace(/\s+/g,"-"));
+  await zipFiles(g.files, g.label);
   btn.classList.add("done"); btn.firstElementChild.textContent=`✓ ${g.label} ZIP saved`;
 }
-async function zipFiles(files, tag){
-  const zip=new JSZip();
-  files.forEach(f=>zip.file(f.name,f));
-  const blob=await zip.generateAsync({type:"blob"});
+const SIZE_LABEL={small:"Small",all:"All",large:"Large"};
+function dlBlob(blob,name){
   const a=document.createElement("a");
-  a.href=URL.createObjectURL(blob);
-  a.download=`POGO-${tag}-${new Date().toISOString().slice(0,10)}.zip`;
+  a.href=URL.createObjectURL(blob); a.download=name;
   a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+async function zipFiles(files, label){
+  const zip=new JSZip();
+  const folder=zip.folder(`${label} - ${SIZE_LABEL[sizeMode]}`);
+  files.forEach(f=>folder.file(f.name,f));
+  dlBlob(await zip.generateAsync({type:"blob"}), `POGO-${label.replace(/\s+/g,"-")}.zip`);
 }
 async function makeZip(){
   const zip=new JSZip();
-  packItems.forEach(i=>zip.folder(i.cat).file(i.file.name,i.file));
-  const blob=await zip.generateAsync({type:"blob"});
-  const a=document.createElement("a");
-  const dt=new Date().toISOString().slice(0,10);
-  a.href=URL.createObjectURL(blob);
-  a.download=`POGO-${tier==="M"||tier==="C"?"PACK":tier}-${sizeMode.toUpperCase()}-${dt}.zip`;
-  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  const root=zip.folder("POGO-Catalog");
+  packItems.forEach(i=>root.folder(`${catLabel(i.cat)} - ${SIZE_LABEL[sizeMode]}`).file(i.file.name,i.file));
+  dlBlob(await zip.generateAsync({type:"blob"}), "POGO-Catalog.zip");
 }
 
 /* ================= DATA DRAWER ================= */
@@ -602,6 +603,24 @@ $("grid").addEventListener("click",e=>{
 });
 $("btnSend").addEventListener("click",async()=>{ if(await generate()) showBatches(); });
 $("btnZip").addEventListener("click",async()=>{ if(await generate()){ await makeZip(); showBatches(); } });
+async function saveAllToPhone(btn){
+  const files=packItems.map(i=>i.file);
+  if(!files.length) return;
+  btn.disabled=true;
+  for(let n=0;n<files.length;n++){
+    const f=files[n];
+    const a=document.createElement("a");
+    const u=URL.createObjectURL(f);
+    a.href=u; a.download=f.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(u),10000);
+    btn.textContent=`Saving ${n+1} / ${files.length}… (allow “multiple downloads” if asked)`;
+    await new Promise(r=>setTimeout(r,300));
+  }
+  btn.disabled=false; btn.classList.add("done");
+  btn.textContent=`✓ ${files.length} photos saved — in WhatsApp: attach → Gallery → select`;
+}
+$("bSave").addEventListener("click",e=>saveAllToPhone(e.currentTarget));
 $("bZip").addEventListener("click",makeZip);
 $("bList").addEventListener("click",e=>{
   const b=e.target.closest(".share"); if(b) shareBatch(+b.dataset.i,b);
