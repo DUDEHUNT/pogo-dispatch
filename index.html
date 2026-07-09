@@ -149,7 +149,7 @@ button{font-family:inherit}
 <body>
 
 <header class="bar">
-  <h1>POGO · Photo Dispatch<small>sheet-driven · footer rates · WhatsApp · v1.6</small></h1>
+  <h1>POGO · Photo Dispatch<small>sheet-driven · footer rates · WhatsApp · v1.7</small></h1>
   <button class="iconbtn" id="btnData">Data</button>
   <button class="iconbtn" id="btnReload">Reload</button>
 </header>
@@ -232,7 +232,7 @@ const MAX_EDGE = 2048, JPG_Q = 0.92, WA_BATCH = 100, SHARE_MAX = 10; /* WA Andro
 let rows = [];            // parsed designs
 let skipped = [];         // rows dropped + reason
 let rateRanges = [];      // ranges that have a rate column
-let diagSizesCol = -1, diagBadSizes = [];
+let diagSizesCol = -1, diagBadSizes = [], diagHeaders = [];
 let loadedAt = null;
 let selCats = new Set();
 let tier = "M";           // R1 R2 R3 M(anual) C(ustom)
@@ -241,6 +241,17 @@ let rateMode = "rate";    // rate | orig
 let selected = new Set(); // row keys
 const blobCache = new Map();
 let cancelFlag = false;
+let viewRank = new Map();
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+function refreshOrder(){
+  viewRank = new Map(shuffle(rows.map(d=>d.key)).map((k,i)=>[k,i]));
+}
 
 /* ================= HELPERS ================= */
 const $ = id => document.getElementById(id);
@@ -280,6 +291,7 @@ async function loadSheet(){
   }
   parseRows(parseCSV(text));
   loadedAt = new Date();
+  refreshOrder();
   buildCatRail(); render();
 }
 function parseRows(table){
@@ -293,8 +305,10 @@ function parseRows(table){
   const cURL  = col(/link|url/);
   const cName = col(/photo\s*name|design\s*name|article/);
   const cCol  = col(/^colou?r/);
-  const cSz   = col(/^sizes?$/);
+  let cSz   = col(/^sizes?$/);
+  if(cSz<0) cSz = H.findIndex(x=>/size/.test(x) && !/rate/.test(x));
   diagSizesCol = cSz;
+  diagHeaders = table[0].map(norm);
   const rateCols = {};
   H.forEach((h,i)=>{
     const m = h.match(/(\d+)\s*-\s*(\d+)/);
@@ -347,9 +361,9 @@ function applyTier(){
   if(tier==="M"||tier==="C"){ return; }
   const rule = TIER_RULE[tier];
   for(const c of selCats){
-    const P = pool().filter(d=>d.cat===c);           // size filter BEFORE tier counts
-    P.filter(d=>d.isNew).slice(0, rule.n===Infinity?P.length:rule.n).forEach(d=>selected.add(d.key));
-    P.filter(d=>!d.isNew).slice(0, rule.o).forEach(d=>selected.add(d.key));
+    const P = pool().filter(d=>d.cat===c);           /* size filter BEFORE tier counts */
+    shuffle(P.filter(d=>d.isNew)).slice(0, rule.n===Infinity?P.length:rule.n).forEach(d=>selected.add(d.key));
+    shuffle(P.filter(d=>!d.isNew)).slice(0, rule.o===Infinity?P.length:rule.o).forEach(d=>selected.add(d.key));
   }
 }
 
@@ -366,6 +380,7 @@ function buildCatRail(){
 function render(){
   document.querySelectorAll("#catRail .chip").forEach(ch=>ch.classList.toggle("on",selCats.has(ch.dataset.c)));
   const P = pool();
+  P.sort((a,b)=>(viewRank.get(a.key)||0)-(viewRank.get(b.key)||0));
   const g = $("grid");
   if(!selCats.size){ g.innerHTML='<div class="empty"><b>Pick a product category above to start.</b><br>Then choose a customer tier and size, and Send.</div>'; }
   else if(!P.length){ g.innerHTML='<div class="empty">No designs match this size filter in the selected categories.</div>'; }
@@ -452,6 +467,7 @@ function fname(d){
 let packItems=[], batchGroups=[], failedList=[];
 async function generate(){
   const P=pool().filter(d=>selected.has(d.key));
+  P.sort((a,b)=>(viewRank.get(a.key)||0)-(viewRank.get(b.key)||0));
   if(!P.length) return null;
   cancelFlag=false; packItems=[]; batchGroups=[]; failedList=[];
   try{ await document.fonts.ready; }catch(e){}
@@ -465,7 +481,7 @@ async function generate(){
   async function worker(){
     while(i<P.length && !cancelFlag){
       const d=P[i++];
-      try{ const b=await makeBlob(d); packItems.push({file:new File([b],fname(d),{type:b.type||"image/jpeg"}), cat:d.cat, idx:d.idx}); }
+      try{ const b=await makeBlob(d); packItems.push({file:new File([b],fname(d),{type:b.type||"image/jpeg"}), cat:d.cat, key:d.key}); }
       catch(e){ failedList.push(d); }
       done++; upd();
     }
@@ -473,7 +489,7 @@ async function generate(){
   await Promise.all(Array.from({length:CONC},worker));
   $("ovlProg").classList.remove("show");
   if(cancelFlag) return null;
-  packItems.sort((a,b)=>a.idx-b.idx);
+  packItems.sort((a,b)=>(viewRank.get(a.key)||0)-(viewRank.get(b.key)||0));
   return packItems;
 }
 function catLabel(code){ const f=CATS.find(c=>c[0]===code); return f?f[1]:code; }
@@ -589,6 +605,7 @@ function openData(){
   let html=`<div class="rowline"><span>Designs loaded</span><b>${rows.length}</b></div>
     <div class="rowline"><span>Rate columns found</span><b>${rateRanges.length? rateRanges.join(", "):"none yet"}</b></div>
     <div class="rowline"><span>Sizes column</span><b>${diagSizesCol>=0?"found ✓":"NOT FOUND"}</b></div>`;
+  html+=`<div class="small">Headers seen: ${diagHeaders.join("  |  ")||"—"}</div>`;
   if(rows.length){
     html+=`<div class="small">First rows parsed as: ${rows.slice(0,3).map(d=>d.designNo+" → "+d.sizes.join(", ")).join("  ·  ")}</div>`;
   }
@@ -613,6 +630,7 @@ $("catRail").addEventListener("click",e=>{
   const ch=e.target.closest(".chip"); if(!ch) return;
   const c=ch.dataset.c;
   selCats.has(c)?selCats.delete(c):selCats.add(c);
+  refreshOrder();
   if(tier!=="M"&&tier!=="C") applyTier();
   render();
 });
@@ -620,6 +638,7 @@ $("tierSeg").addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
   tier=b.dataset.t;
   [...$("tierSeg").children].forEach(x=>x.classList.toggle("on",x===b));
+  refreshOrder();
   if(tier==="M") selected=new Set(); else applyTier();
   render();
 });
@@ -627,6 +646,7 @@ $("sizeSeg").addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
   sizeMode=b.dataset.s;
   [...$("sizeSeg").children].forEach(x=>x.classList.toggle("on",x===b));
+  refreshOrder();
   if(tier!=="M"&&tier!=="C") applyTier();
   else selected=new Set([...selected].filter(k=>pool().some(d=>d.key===k)));
   render();
