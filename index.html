@@ -149,7 +149,7 @@ button{font-family:inherit}
 <body>
 
 <header class="bar">
-  <h1>POGO · Photo Dispatch<small>sheet-driven · footer rates · WhatsApp · v1.7</small></h1>
+  <h1>POGO · Photo Dispatch<small>sheet-driven · footer rates · WhatsApp · v1.8</small></h1>
   <button class="iconbtn" id="btnData">Data</button>
   <button class="iconbtn" id="btnReload">Reload</button>
 </header>
@@ -199,6 +199,7 @@ button{font-family:inherit}
   <div id="bList"></div>
   <button class="batchbtn" id="bSave">Save all photos to phone</button>
   <button class="batchbtn" id="bZip">Download everything as ZIP</button>
+  <button class="batchbtn" id="bDone" style="border-color:var(--ok);color:var(--ok);background:#EAF6EE">✓ Complete dispatch — clear session</button>
   <div class="small" id="bNote"></div>
 </div></div>
 
@@ -252,6 +253,45 @@ function shuffle(a){
 function refreshOrder(){
   viewRank = new Map(shuffle(rows.map(d=>d.key)).map((k,i)=>[k,i]));
 }
+/* ---------- dispatch session persistence ---------- */
+const store={
+  set(k,v){try{localStorage.setItem("pogo:"+k,JSON.stringify(v));}catch(e){}},
+  get(k){try{const v=localStorage.getItem("pogo:"+k);return v?JSON.parse(v):null;}catch(e){return null;}},
+  del(k){try{localStorage.removeItem("pogo:"+k);}catch(e){}}
+};
+function idb(){return new Promise((res,rej)=>{const q=indexedDB.open("pogo",1);
+  q.onupgradeneeded=()=>q.result.createObjectStore("pack");
+  q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error);});}
+async function idbSetPack(items){const db=await idb();
+  return new Promise((res,rej)=>{const tx=db.transaction("pack","readwrite");const st=tx.objectStore("pack");
+    st.clear(); items.forEach((it,i)=>st.put({file:it.file,cat:it.cat,key:it.key},i));
+    tx.oncomplete=res; tx.onerror=()=>rej(tx.error);});}
+async function idbGetPack(){try{const db=await idb();
+  return await new Promise((res,rej)=>{const rq=db.transaction("pack","readonly").objectStore("pack").getAll();
+    rq.onsuccess=()=>res(rq.result.map(x=>({file:x.file,cat:x.cat,key:x.key}))); rq.onerror=()=>rej(rq.error);});
+}catch(e){return null;}}
+async function idbClear(){try{const db=await idb();db.transaction("pack","readwrite").objectStore("pack").clear();}catch(e){}}
+function saveDraft(){
+  if(!rows.length) return;
+  const S=store.get("session")||{};
+  if(!selCats.size && !selected.size && !S.pack){ store.del("session"); return; }
+  Object.assign(S,{cats:[...selCats],tier,sizeMode,rateMode,sel:[...selected],
+    rank:rows.map(d=>d.key).sort((a,b)=>(viewRank.get(a)||0)-(viewRank.get(b)||0)),t:Date.now()});
+  store.set("session",S);
+}
+function markSent(i){const S=store.get("session")||{};S.sent=Array.from(new Set([...(S.sent||[]),i]));store.set("session",S);}
+function syncSegs(){
+  [...$("tierSeg").children].forEach(x=>x.classList.toggle("on",x.dataset.t===tier));
+  [...$("sizeSeg").children].forEach(x=>x.classList.toggle("on",x.dataset.s===sizeMode));
+  [...$("rateSeg").children].forEach(x=>x.classList.toggle("on",x.dataset.r===rateMode));
+}
+function endSession(){
+  store.del("session"); idbClear();
+  packItems=[]; batchGroups=[]; selected=new Set(); tier="M";
+  syncSegs(); refreshOrder();
+  $("ovlBatch").classList.remove("show");
+  banner(""); render();
+}
 
 /* ================= HELPERS ================= */
 const $ = id => document.getElementById(id);
@@ -291,7 +331,23 @@ async function loadSheet(){
   }
   parseRows(parseCSV(text));
   loadedAt = new Date();
-  refreshOrder();
+  const S = store.get("session");
+  if(S && ((S.cats&&S.cats.length) || (S.sel&&S.sel.length) || S.pack)){
+    selCats=new Set(S.cats||[]); tier=S.tier||"M"; sizeMode=S.sizeMode||"all"; rateMode=S.rateMode||"rate";
+    const ids=new Set(rows.map(d=>d.key));
+    const kept=(S.rank||[]).filter(k=>ids.has(k));
+    const keptSet=new Set(kept);
+    viewRank=new Map(kept.concat(shuffle(rows.map(d=>d.key).filter(k=>!keptSet.has(k)))).map((k,i)=>[k,i]));
+    selected=new Set((S.sel||[]).filter(k=>ids.has(k)));
+    syncSegs();
+    banner('Ongoing dispatch restored — finish sending, then “Complete dispatch” in the pack screen. <b style="cursor:pointer;text-decoration:underline" onclick="endSession()">End session now</b>',"info");
+    if(S.pack){
+      const items=await idbGetPack();
+      if(items && items.length){ packItems=items; buildCatRail(); render(); showBatches(); return; }
+    }
+  } else {
+    refreshOrder();
+  }
   buildCatRail(); render();
 }
 function parseRows(table){
@@ -317,6 +373,7 @@ function parseRows(table){
       rateCols[r]=i; if(!rateRanges.includes(r)) rateRanges.push(r);
     }
   });
+  const seenIds=new Set();
   for(let i=1;i<table.length;i++){
     const R = table[i]; if(!R || !R.join("").trim()) continue;
     const url = norm(R[cURL]||"");
@@ -343,7 +400,8 @@ function parseRows(table){
       const fromRates = Object.keys(rates);
       sizes = fromRates.length ? fromRates.slice() : DEFAULT_SIZES.slice();
     }
-    rows.push({key:"k"+i, idx:i, id, cat, isNew:label==="NEW", url, name:name||id, designNo, colorTxt, sizes, rates, failed:false});
+    let kkey=id; if(seenIds.has(kkey)) kkey=id+"#"+i; seenIds.add(kkey);
+    rows.push({key:kkey, idx:i, id, cat, isNew:label==="NEW", url, name:name||id, designNo, colorTxt, sizes, rates, failed:false});
   }
 }
 
@@ -402,6 +460,7 @@ function render(){
     ? `${tierName} · ${[...selCats].map(catLabel).join(" + ")} · ${sizeMode.toUpperCase()} · ${rateMode==="rate"?"RATE FOOTER":"ORIGINALS"}`
     : "no pack yet";
   $("btnSend").disabled = $("btnZip").disabled = n===0;
+  saveDraft();
 }
 
 /* ================= COMPOSITING ================= */
@@ -490,6 +549,7 @@ async function generate(){
   $("ovlProg").classList.remove("show");
   if(cancelFlag) return null;
   packItems.sort((a,b)=>(viewRank.get(a.key)||0)-(viewRank.get(b.key)||0));
+  try{ await idbSetPack(packItems); const S=store.get("session")||{}; S.pack=true; S.sent=[]; store.set("session",S); }catch(e){}
   return packItems;
 }
 function catLabel(code){ const f=CATS.find(c=>c[0]===code); return f?f[1]:code; }
@@ -536,6 +596,9 @@ function showBatches(){
       : "<b>This browser can’t hand photos straight to WhatsApp.</b> Open this page in Chrome for one-tap sending — for now each button saves that category as a ZIP. ")
     + (failedList.length? `<span style="color:var(--danger)">Skipped ${failedList.length} (image failed to load): ${failedList.map(d=>d.designNo).join(", ")}.</span> `:"" )
     + `ZIPs keep fixed names and folders (e.g. “Waistcoat - ${SIZE_LABEL[sizeMode]}”), so extracting with “Replace” refreshes old photos instead of doubling them. Delete the ZIP after extracting.`;
+  const sentIdx=((store.get("session")||{}).sent)||[];
+  sentIdx.forEach(ix=>{const b=$("bList").querySelector('[data-i="'+ix+'"]');
+    if(b&&batchGroups[ix]){b.classList.add("done"); b.firstElementChild.textContent=`✓ ${batchGroups[ix].label} sent`;}});
   $("ovlBatch").classList.add("show");
 }
 async function shareBatch(i,btn){
@@ -556,6 +619,7 @@ async function shareBatch(i,btn){
         if(!AndroidBridge.addImage(f.name,b64)) throw new Error("could not save "+f.name);
       }
       AndroidBridge.sharePack(g.label);
+      markSent(i);
       btn.classList.add("done"); btn.firstElementChild.textContent=`✓ ${g.label} sent`;
     }catch(e){
       btn.firstElementChild.textContent=`Send ${g.label}`;
@@ -568,6 +632,7 @@ async function shareBatch(i,btn){
   if(canS){
     try{
       await navigator.share({files:g.files});
+      markSent(i);
       btn.classList.add("done"); btn.firstElementChild.textContent=`✓ ${g.label} sent`;
       return;
     }catch(e){
@@ -576,6 +641,7 @@ async function shareBatch(i,btn){
     }
   }
   await zipFiles(g.files, g.label);
+  markSent(i);
   btn.classList.add("done"); btn.firstElementChild.textContent=`✓ ${g.label} ZIP saved`;
 }
 const SIZE_LABEL={small:"Small",all:"All",large:"Large"};
@@ -685,6 +751,7 @@ async function saveAllToPhone(btn){
 }
 $("bSave").addEventListener("click",e=>saveAllToPhone(e.currentTarget));
 $("bZip").addEventListener("click",makeZip);
+$("bDone").addEventListener("click",endSession);
 $("bList").addEventListener("click",e=>{
   const b=e.target.closest(".share"); if(b) shareBatch(+b.dataset.i,b);
 });
