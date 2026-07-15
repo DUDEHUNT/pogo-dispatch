@@ -67,6 +67,16 @@ button{font-family:inherit}
 .seg button.on{background:var(--ink);color:#fff}
 .seg.warm button.on{background:var(--marigold);color:#231602}
 .hint{padding:0 16px 8px;font-size:12px;color:var(--ink-soft)}
+.rail3{display:flex;gap:8px;padding:0 14px 10px}
+.rail3 input{
+  flex:1;border:1.5px solid var(--line);background:var(--card);color:var(--ink);
+  border-radius:12px;padding:11px 14px;font:600 14.5px "Bricolage Grotesque",system-ui,sans-serif;
+}
+.rail3 input::placeholder{color:var(--ink-soft);font-weight:500}
+.rail3 button{
+  border:1.5px solid var(--line);background:var(--card);color:var(--ink-soft);
+  border-radius:12px;padding:0 15px;font-size:15px;font-weight:800;cursor:pointer;
+}
 
 /* ---------- banners ---------- */
 .banner{margin:10px 14px 0;border-radius:var(--r);padding:12px 14px;font-size:13.5px;line-height:1.45;display:none}
@@ -99,6 +109,8 @@ button{font-family:inherit}
 .card .meta{padding:8px 10px 10px}
 .card .nm{font-size:13.5px;font-weight:800;line-height:1.2}
 .card .sz{font-size:11.5px;color:var(--ink-soft);margin-top:3px}
+.card .stk{font-size:11px;color:var(--ink-soft);margin-top:3px}
+.card .stk b.pd{color:#B45309;font-weight:800}
 .card.bad .ph::after{content:"⚠ image failed";position:absolute;inset:auto 0 0 0;background:var(--danger);color:#fff;font-size:11px;text-align:center;padding:3px}
 .empty{padding:60px 24px;text-align:center;color:var(--ink-soft);font-size:14.5px;line-height:1.6}
 .empty b{color:var(--ink)}
@@ -149,7 +161,7 @@ button{font-family:inherit}
 <body>
 
 <header class="bar">
-  <h1>POGO · Photo Dispatch<small>sheet-driven · footer rates · WhatsApp · v1.8</small></h1>
+  <h1>POGO · Photo Dispatch<small>sheet-driven · footer rates · WhatsApp · v2.2</small></h1>
   <button class="iconbtn" id="btnData">Data</button>
   <button class="iconbtn" id="btnReload">Reload</button>
 </header>
@@ -167,6 +179,7 @@ button{font-family:inherit}
       <button data-r="rate" class="on">Rate footer</button><button data-r="orig">Originals</button>
     </div>
   </div>
+  <div class="rail3"><input id="q" type="search" placeholder="Search design no. or name…" autocomplete="off"><button id="qx" aria-label="Clear search">✕</button></div>
   <div class="hint" id="hint">Pick categories to start · R0 all · R1 all new · R2 30 new + 10 old · R3 20 new + 20 old (per category)</div>
 </div>
 
@@ -233,9 +246,10 @@ const MAX_EDGE = 2048, JPG_Q = 0.92, WA_BATCH = 100, SHARE_MAX = 10; /* WA Andro
 let rows = [];            // parsed designs
 let skipped = [];         // rows dropped + reason
 let rateRanges = [];      // ranges that have a rate column
-let diagSizesCol = -1, diagBadSizes = [], diagHeaders = [];
+let diagSizesCol = -1, diagBadSizes = [], diagHeaders = [], diagStockCol = -1, diagStockRows = 0;
 let loadedAt = null;
 let selCats = new Set();
+let q = "";
 let tier = "M";           // R1 R2 R3 M(anual) C(ustom)
 let sizeMode = "all";     // small | all | large
 let rateMode = "rate";    // rate | orig
@@ -351,7 +365,7 @@ async function loadSheet(){
   buildCatRail(); render();
 }
 function parseRows(table){
-  rows=[]; skipped=[]; rateRanges=[]; diagBadSizes=[]; diagSizesCol=-1;
+  rows=[]; skipped=[]; rateRanges=[]; diagBadSizes=[]; diagSizesCol=-1; diagStockCol=-1; diagStockRows=0;
   if(!table.length) return;
   const H = table[0].map(low);
   const col = re => H.findIndex(h=>re.test(h));
@@ -361,6 +375,8 @@ function parseRows(table){
   const cURL  = col(/link|url/);
   const cName = col(/photo\s*name|design\s*name|article/);
   const cCol  = col(/^colou?r/);
+  const cStk = col(/^sizestock/);
+  diagStockCol = cStk;
   let cSz   = col(/^sizes?$/);
   if(cSz<0) cSz = H.findIndex(x=>/size/.test(x) && !/rate/.test(x));
   diagSizesCol = cSz;
@@ -400,12 +416,26 @@ function parseRows(table){
       const fromRates = Object.keys(rates);
       sizes = fromRates.length ? fromRates.slice() : DEFAULT_SIZES.slice();
     }
+    const stock={};
+    if(cStk>=0){ norm(R[cStk]||"").split(/,+/).forEach(t=>{
+      const m=t.trim().match(/^(\d+-\d+):(\d+):(\d+)$/);
+      if(m) stock[m[1]]={sets:+m[2],pend:+m[3]};
+    }); }
+    if(Object.keys(stock).length) diagStockRows++;
     let kkey=id; if(seenIds.has(kkey)) kkey=id+"#"+i; seenIds.add(kkey);
-    rows.push({key:kkey, idx:i, id, cat, isNew:label==="NEW", url, name:name||id, designNo, colorTxt, sizes, rates, failed:false});
+    rows.push({key:kkey, idx:i, id, cat, isNew:label==="NEW", url, name:name||id, designNo, colorTxt, sizes, rates, stock, failed:false});
   }
 }
 
 /* ================= FILTER LOGIC ================= */
+function stockEntries(d){
+  const st=d.stock||{};
+  const lbl=k=>{const p=k.split("-");return p[0]===p[1]?p[0]:k;};
+  const inSizes=d.sizes.filter(s=>st[s]);
+  const extra=Object.keys(st).filter(k=>!d.sizes.includes(k))
+    .sort((a,b)=>{const A=a.split("-").map(Number),B=b.split("-").map(Number);return (A[1]-B[1])||(A[0]-B[0]);});
+  return inSizes.concat(extra).map(k=>({k,label:lbl(k),sets:st[k].sets,pend:st[k].pend}));
+}
 const sizeSet = m => m==="small"?SMALL_SET : m==="large"?LARGE_SET : null;
 function sizeOK(d){ const S=sizeSet(sizeMode); return !S || d.sizes.some(s=>S.includes(s)); }
 function ratePairs(d){
@@ -413,7 +443,16 @@ function ratePairs(d){
   const rgs = S ? d.sizes.filter(s=>S.includes(s)) : d.sizes;
   return rgs.filter(r=>d.rates[r]!=null).map(r=>[r,d.rates[r]]);
 }
-function pool(){ return rows.filter(d=>selCats.has(d.cat) && sizeOK(d)); }
+function pool(){
+  if(q){
+    const toks=q.toLowerCase().split(/\s+/).filter(Boolean);
+    return rows.filter(d=>{
+      const hay=(d.name+" "+d.id+" "+d.designNo).toLowerCase();
+      return toks.every(t=>hay.includes(t));
+    });
+  }
+  return rows.filter(d=>selCats.has(d.cat) && sizeOK(d));
+}
 function applyTier(){
   selected = new Set();
   if(tier==="M"||tier==="C"){ return; }
@@ -440,23 +479,29 @@ function render(){
   const P = pool();
   P.sort((a,b)=>(viewRank.get(a.key)||0)-(viewRank.get(b.key)||0));
   const g = $("grid");
-  if(!selCats.size){ g.innerHTML='<div class="empty"><b>Pick a product category above to start.</b><br>Then choose a customer tier and size, and Send.</div>'; }
-  else if(!P.length){ g.innerHTML='<div class="empty">No designs match this size filter in the selected categories.</div>'; }
+  if(!q && !selCats.size){ g.innerHTML='<div class="empty"><b>Pick a product category above to start</b> — or search any design by number or name.</div>'; }
+  else if(!P.length){ g.innerHTML=q?'<div class="empty">No in-stock design matches “'+q.replace(/</g,"&lt;")+'”.</div>':'<div class="empty">No designs match this size filter in the selected categories.</div>'; }
   else{
     g.innerHTML = P.map(d=>{
       const thumb = d.url.includes("res.cloudinary.com") ? d.url.replace("/upload/","/upload/w_420,q_auto,f_auto/") : d.url;
+      const stkTxt = stockEntries(d).map(t=>
+        t.sets>0
+          ? `${t.label}: ${t.sets}s${t.pend?`<b class="pd"> ·P${t.pend}</b>`:""}`
+          : `<b class="pd">${t.label}: P${t.pend}</b>`
+      ).join("&nbsp;&nbsp;&nbsp;");
       return `<div class="card${selected.has(d.key)?" sel":""}" data-k="${d.key}">
         <div class="ph">${d.isNew?'<span class="newpill">NEW</span>':""}
           <img loading="lazy" src="${thumb}" alt="${d.name}" onerror="this.closest('.card').classList.add('bad')">
           <div class="tick"><span>✓</span></div></div>
         <div class="meta"><div class="nm">${d.designNo}${d.colorTxt?" · "+d.colorTxt:""}</div>
-        <div class="sz">${d.sizes.join("  ")}</div></div></div>`;
+        <div class="sz">${d.sizes.join("  ")}</div>
+        ${stkTxt?`<div class="stk">${stkTxt}</div>`:""}</div></div>`;
     }).join("");
   }
   const n = [...selected].filter(k=>P.some(d=>d.key===k)).length;
   $("tCount").textContent = n+" photo"+(n===1?"":"s");
   const tierName = tier==="M"?"Manual":tier==="C"?"Custom":tier;
-  $("tDesc").textContent = selCats.size
+  $("tDesc").textContent = q ? `SEARCH “${q}” · ${rateMode==="rate"?"RATE FOOTER":"ORIGINALS"}` : selCats.size
     ? `${tierName} · ${[...selCats].map(catLabel).join(" + ")} · ${sizeMode.toUpperCase()} · ${rateMode==="rate"?"RATE FOOTER":"ORIGINALS"}`
     : "no pack yet";
   $("btnSend").disabled = $("btnZip").disabled = n===0;
@@ -487,9 +532,10 @@ async function makeBlob(d){
     const sc = Math.min(1, MAX_EDGE/Math.max(W,H)); W=Math.round(W*sc); H=Math.round(H*sc);
     const u = W/1000;
     const pairs = ratePairs(d);
-    const f1=Math.round(38*u), f2=Math.round(28*u), f3=Math.round(34*u);
+    const stks = stockEntries(d);
+    const f1=Math.round(38*u), f2=Math.round(28*u), f3=Math.round(34*u), f4=Math.round(26*u);
     const pad=Math.round(22*u), gap=Math.round(10*u);
-    const fh = pad*2 + f1 + gap + f2 + (pairs.length? gap+f3 : 0);
+    const fh = pad*2 + f1 + gap + f2 + (pairs.length? gap+f3 : 0) + (stks.length? gap+f4 : 0);
     const cv=document.createElement("canvas"); cv.width=W; cv.height=H;
     const cx=cv.getContext("2d");
     cx.drawImage(im,0,0,W,H);
@@ -510,6 +556,13 @@ async function makeBlob(d){
       y+=f2+gap;
       const l3=pairs.map(([r,v])=>`${r}  ₹${v}`).join("    ·    ");
       cx.fillStyle="#FFC24B"; fit(l3,f3,800); cx.fillText(l3,pad,y);
+    }
+    if(stks.length){
+      y += (pairs.length? f3 : f2) + gap;
+      const l4="Stock  "+stks.map(t=> t.sets>0
+        ? `${t.label}: ${t.sets} set${t.pend?` · Pend ${t.pend}`:""}`
+        : `${t.label}: Pend ${t.pend}`).join("   ");
+      cx.fillStyle="#FFFFFF"; cx.globalAlpha=.9; fit(l4,f4,600); cx.fillText(l4,pad,y); cx.globalAlpha=1;
     }
     blob = await new Promise(res=>cv.toBlob(res,"image/jpeg",JPG_Q));
     if(!blob) throw new Error("encode");
@@ -670,7 +723,8 @@ function openData(){
   rows.forEach(d=>{ const p=perCat[d.cat]=perCat[d.cat]||{n:0,o:0}; d.isNew?p.n++:p.o++; });
   let html=`<div class="rowline"><span>Designs loaded</span><b>${rows.length}</b></div>
     <div class="rowline"><span>Rate columns found</span><b>${rateRanges.length? rateRanges.join(", "):"none yet"}</b></div>
-    <div class="rowline"><span>Sizes column</span><b>${diagSizesCol>=0?"found ✓":"NOT FOUND"}</b></div>`;
+    <div class="rowline"><span>Sizes column</span><b>${diagSizesCol>=0?"found ✓":"NOT FOUND"}</b></div>
+    <div class="rowline"><span>SizeStock column</span><b>${diagStockCol>=0? "found ✓ · "+diagStockRows+" designs":"NOT FOUND — run Modifier v6 once"}</b></div>`;
   html+=`<div class="small">Headers seen: ${diagHeaders.join("  |  ")||"—"}</div>`;
   if(rows.length){
     html+=`<div class="small">First rows parsed as: ${rows.slice(0,3).map(d=>d.designNo+" → "+d.sizes.join(", ")).join("  ·  ")}</div>`;
@@ -730,6 +784,9 @@ $("grid").addEventListener("click",e=>{
   if(tier!=="M"){ tier="C"; [...$("tierSeg").children].forEach(x=>x.classList.remove("on")); }
   render();
 });
+let qT=null;
+$("q").addEventListener("input",e=>{ q=e.target.value.trim(); clearTimeout(qT); qT=setTimeout(render,150); });
+$("qx").addEventListener("click",()=>{ q=""; $("q").value=""; render(); });
 $("btnSend").addEventListener("click",async()=>{ if(await generate()) showBatches(); });
 $("btnZip").addEventListener("click",async()=>{ if(await generate()){ await makeZip(); showBatches(); } });
 async function saveAllToPhone(btn){
@@ -759,6 +816,45 @@ $("pCancel").addEventListener("click",()=>{cancelFlag=true;});
 $("btnReload").addEventListener("click",()=>{ blobCache.clear(); loadSheet(); });
 $("btnData").addEventListener("click",openData);
 document.querySelectorAll("[data-close]").forEach(x=>x.addEventListener("click",()=>$(x.dataset.close).classList.remove("show")));
+
+/* ---------- freshness: silent data refresh + self-update check ---------- */
+const APP_V = "2.2";
+let lastVCheck = 0;
+async function refreshData(){
+  try{
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(SHEET_TAB)}`;
+    const r = await fetch(url,{cache:"no-store"});
+    if(!r.ok) return;
+    parseRows(parseCSV(await r.text()));
+    loadedAt = new Date();
+    const ids = new Set(rows.map(d=>d.key));
+    selected = new Set([...selected].filter(k=>ids.has(k)));
+    const kept = [...viewRank.keys()].filter(k=>ids.has(k));
+    const keptSet = new Set(kept);
+    viewRank = new Map(kept.concat(shuffle(rows.map(d=>d.key).filter(k=>!keptSet.has(k)))).map((k,i)=>[k,i]));
+    blobCache.clear();
+    buildCatRail(); render();
+    banner("Sheet refreshed · "+loadedAt.toLocaleTimeString(),"info");
+    setTimeout(()=>{ if($("banner").textContent.indexOf("Sheet refreshed")===0) banner(""); },4000);
+  }catch(e){}
+}
+async function checkAppVersion(){
+  const now = Date.now();
+  if(now - lastVCheck < 10*60*1000) return;
+  lastVCheck = now;
+  try{
+    const t = await (await fetch(location.pathname+"?vchk="+now,{cache:"no-store"})).text();
+    const m = t.match(/WhatsApp · v([\d.]+)/);
+    if(m && m[1] !== APP_V){
+      banner(`New app version v${m[1]} is live — <b style="cursor:pointer;text-decoration:underline" onclick="location.replace(location.pathname+'?u='+Date.now())">tap to load it</b>`,"info");
+    }
+  }catch(e){}
+}
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState !== "visible") return;
+  if(loadedAt && (Date.now() - loadedAt.getTime() > 5*60*1000)) refreshData();
+  checkAppVersion();
+});
 
 loadSheet();
 </script>
