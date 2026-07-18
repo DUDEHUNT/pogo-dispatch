@@ -161,7 +161,7 @@ button{font-family:inherit}
 <body>
 
 <header class="bar">
-  <h1>POGO · Photo Dispatch<small>sheet-driven · footer rates · WhatsApp · v2.2</small></h1>
+  <h1>POGO · Photo Dispatch<small>sheet-driven · footer rates · WhatsApp · v2.3</small></h1>
   <button class="iconbtn" id="btnData">Data</button>
   <button class="iconbtn" id="btnReload">Reload</button>
 </header>
@@ -404,6 +404,7 @@ function parseRows(table){
     const designNo = dm ? dm[0] : id;
     let colorTxt = dm ? name.replace(dm[0],"").trim() : (norm(R[cCol]||""));
     if(!colorTxt) colorTxt = norm(R[cCol]||"");
+    colorTxt = colorTxt.replace(/^(WC|BL|PW|JK|SW|2P|2S|RW)\b[\s\-–.·:]*/i,"").trim();
     const rates = {};
     for(const [rg,ci] of Object.entries(rateCols)){
       const v = money(R[ci]||"");
@@ -532,10 +533,9 @@ async function makeBlob(d){
     const sc = Math.min(1, MAX_EDGE/Math.max(W,H)); W=Math.round(W*sc); H=Math.round(H*sc);
     const u = W/1000;
     const pairs = ratePairs(d);
-    const stks = stockEntries(d);
-    const f1=Math.round(38*u), f2=Math.round(28*u), f3=Math.round(34*u), f4=Math.round(26*u);
+    const f1=Math.round(38*u), f2=Math.round(28*u), f3=Math.round(34*u);
     const pad=Math.round(22*u), gap=Math.round(10*u);
-    const fh = pad*2 + f1 + gap + f2 + (pairs.length? gap+f3 : 0) + (stks.length? gap+f4 : 0);
+    const fh = pad*2 + f1 + gap + f2 + (pairs.length? gap+f3 : 0);
     const cv=document.createElement("canvas"); cv.width=W; cv.height=H;
     const cx=cv.getContext("2d");
     cx.drawImage(im,0,0,W,H);
@@ -556,13 +556,6 @@ async function makeBlob(d){
       y+=f2+gap;
       const l3=pairs.map(([r,v])=>`${r}  ₹${v}`).join("    ·    ");
       cx.fillStyle="#FFC24B"; fit(l3,f3,800); cx.fillText(l3,pad,y);
-    }
-    if(stks.length){
-      y += (pairs.length? f3 : f2) + gap;
-      const l4="Stock  "+stks.map(t=> t.sets>0
-        ? `${t.label}: ${t.sets} set${t.pend?` · Pend ${t.pend}`:""}`
-        : `${t.label}: Pend ${t.pend}`).join("   ");
-      cx.fillStyle="#FFFFFF"; cx.globalAlpha=.9; fit(l4,f4,600); cx.fillText(l4,pad,y); cx.globalAlpha=1;
     }
     blob = await new Promise(res=>cv.toBlob(res,"image/jpeg",JPG_Q));
     if(!blob) throw new Error("encode");
@@ -818,7 +811,7 @@ $("btnData").addEventListener("click",openData);
 document.querySelectorAll("[data-close]").forEach(x=>x.addEventListener("click",()=>$(x.dataset.close).classList.remove("show")));
 
 /* ---------- freshness: silent data refresh + self-update check ---------- */
-const APP_V = "2.2";
+const APP_V = "2.3";
 let lastVCheck = 0;
 async function refreshData(){
   try{
